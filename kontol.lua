@@ -1619,66 +1619,241 @@ end
 Webhooksettings:Button({
 Title = "Test Webhook",
 Callback = function()
-if not webhookState.webhookPath then
-pcall(function() UI:Notify({ Title = "Test Failed", Content = "Please enter webhook URL first", Duration = 3, Icon = "alert-triangle" }) end)
-return
-end
-
--- Send test webhook
-local WebhookURL = "https://discord.com/api/webhooks/" .. webhookState.webhookPath
-local data = {
-                ["username"] = "HELLZONEv1 Fisher - Notification System",
-["embeds"] = {{
-["title"] = "🧪 Test Webhook",
-["description"] = "This is a test message from HELLZONEv1 script!",
-["color"] = tonumber("0x00ff00"),
-                    ["footer"] = { ["text"] = "HELLZONEv1 Webhook Test | " .. os.date("%H:%M:%S") }
-}}
-}
-
-local requestFunc = syn and syn.request or http and http.request or http_request or request or fluxus and fluxus.request
-if requestFunc then
-pcall(function()
-requestFunc({ Url = WebhookURL, Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = HttpService:JSONEncode(data) })
-pcall(function() UI:Notify({ Title = "Test Sent", Content = "Test webhook sent successfully!", Duration = 3, Icon = "circle-check" }) end)
-end)
-else
-pcall(function() UI:Notify({ Title = "Test Failed", Content = "No HTTP request function available", Duration = 3, Icon = "alert-triangle" }) end)
-end
-end
+-------------------------------------------
+----- =======[ WEBHOOK TAB ]
+-------------------------------------------
+Webhooksettings:Paragraph({
+    Title = "🔗 Discord Webhook Features",
+    Desc = "Send notifications to Discord when you catch rare fish.",
+    Locked = true
 })
 
--- Fish notification monitoring
+-- Webhook state management
+local webhookState = {
+    webhookPath = nil,
+    enabled = false,
+    selectedCategories = {}
+}
+
+-- Fish categories for webhook
+local fishCategories = {"Secret", "Mythic", "Legendary", "Epic"}
+
+-- Function to validate webhook
+local function validateWebhook(path)
+    if not path or path == "" then return false, "Key is empty" end
+    local webhookKey = path
+    if path:match("^https://discord%.com/api/webhooks/") then
+        webhookKey = path:match("https://discord%.com/api/webhooks/(.+)")
+        if not webhookKey then return false, "Invalid URL format" end
+    elseif not path:match("^%d+/.+") then
+        return false, "Invalid format - use full URL or ID/TOKEN format"
+    end
+
+    local url = "https://discord.com/api/webhooks/" .. webhookKey
+    local success, response = pcall(game.HttpGet, game, url)
+    if not success then return false, "Failed to connect to Discord" end
+    local ok, data = pcall(HttpService.JSONDecode, HttpService, response)
+    if not ok or not data or not data.channel_id then return false, "Invalid webhook" end
+    return true, data.channel_id, webhookKey
+end
+
+-- Function to get Roblox image URL
+local function getRobloxImage(assetId)
+    if not assetId then return nil end
+    return "https://www.roblox.com/asset-thumbnail/image?assetId=" .. assetId .. "&width=420&height=420&format=png"
+end
+
+-- Function to send fish webhook
+local function sendFishWebhook(fishName, rarityText, assetId, itemId, variantId)
+    if not webhookState.webhookPath or webhookState.webhookPath == "" or not webhookState.enabled then return end
+    if not table.find(webhookState.selectedCategories, rarityText) then return end
+
+    local WebhookURL = "https://discord.com/api/webhooks/" .. webhookState.webhookPath
+    local username = player.DisplayName
+    local imageUrl = getRobloxImage(assetId)
+    if not imageUrl then return end
+
+    local caught = player:FindFirstChild("leaderstats") and player.leaderstats:FindFirstChild("Caught")
+    local rarest = player:FindFirstChild("leaderstats") and player.leaderstats:FindFirstChild("Rarest Fish")
+
+    local fields = useCompactEmbed and nil or {
+        { name = "Total Caught", value = tostring(caught and caught.Value or "N/A"), inline = true},
+        { name = "Rarest Fish", value = tostring(rarest and rarest.Value or "N/A"), inline = true},
+    }
+    local embed = {
+        ["title"] = "🎣 Fish Caught!",
+        ["description"] = string.format("Player **%s** caught a **%s** (%s)!", username, fishName, rarityText),
+        ["color"] = tonumber("0x00bfff"),
+        ["image"] = { ["url"] = imageUrl },
+        ["footer"] = { ["text"] = "HELLZONEv1 Webhook | " .. os.date("%H:%M:%S") }
+    }
+    if fields then embed["fields"] = fields end
+    local data = { ["username"] = "HELLZONEv1 Fisher - Notification System", ["embeds"] = { embed } }
+
+    local requestFunc = syn and syn.request or http and http.request or http_request or request or fluxus and fluxus.request
+    if requestFunc then
+        pcall(function()
+            requestFunc({ Url = WebhookURL, Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = HttpService:JSONEncode(data) })
+        end)
+    end
+end
+
+-- Webhook input
+Webhooksettings:Input({
+    Title = "Discord Webhook URL",
+    Desc = "Enter your Discord webhook URL (full URL or ID/TOKEN format)",
+    Placeholder = "https://discord.com/api/webhooks/...",
+    Callback = function(text)
+        if text == "" then 
+            webhookState.webhookPath = nil
+            return 
+        end
+        text = text:gsub("^%s+",""):gsub("%s+$","")
+        local isValid, result, webhookKey = validateWebhook(text)
+        if isValid then
+            webhookState.webhookPath = webhookKey
+            pcall(function() UI:Notify({ Title = "Webhook Valid", Content = "Channel ID: " .. tostring(result), Duration = 3, Icon = "circle-check" }) end)
+        else
+            webhookState.webhookPath = nil
+            pcall(function() UI:Notify({ Title = "Webhook Invalid", Content = tostring(result), Duration = 3, Icon = "ban" }) end)
+        end
+    end
+})
+
+-- Compact embed toggle
+local useCompactEmbed = false
+Webhooksettings:Toggle({
+    Title = "Compact Embed",
+    Desc = "Send smaller embed (fewer fields)",
+    Callback = function(v)
+        useCompactEmbed = v
+    end
+})
+
+-- Fish category selection
+Webhooksettings:Dropdown({
+    Title = "Select Fish Rarities to Notify",
+    Desc = "Choose which fish rarities to send webhook notifications for",
+    Values = fishCategories,
+    Multi = true,
+    AllowNone = true,
+    Callback = function(selectedRarities)
+        webhookState.selectedCategories = selectedRarities or {}
+    end
+})
+
+-- Enable webhook toggle
+Webhooksettings:Toggle({
+    Title = "Enable Webhook Notifications",
+    Desc = "Send Discord notifications when catching selected fish rarities",
+    Callback = function(Value)
+        webhookState.enabled = Value
+        if Value then
+            if not webhookState.webhookPath then
+                pcall(function() UI:Notify({ Title = "Webhook", Content = "Please enter webhook URL first", Duration = 3, Icon = "alert-triangle" }) end)
+                webhookState.enabled = false
+                return
+            end
+            if #webhookState.selectedCategories == 0 then
+                pcall(function() UI:Notify({ Title = "Webhook", Content = "Please select at least one fish rarity", Duration = 3, Icon = "alert-triangle" }) end)
+                webhookState.enabled = false
+                return
+            end
+            pcall(function() UI:Notify({ Title = "Webhook", Content = "Webhook notifications enabled for " .. #webhookState.selectedCategories .. " rarities", Duration = 3, Icon = "webhook" }) end)
+        else
+            pcall(function() UI:Notify({ Title = "Webhook", Content = "Webhook notifications disabled", Duration = 3, Icon = "webhook" }) end)
+        end
+    end
+})
+
+-- Test webhook button
+Webhooksettings:Button({
+    Title = "Test Webhook",
+    Callback = function()
+        if not webhookState.webhookPath then
+            pcall(function() UI:Notify({ Title = "Test Failed", Content = "Please enter webhook URL first", Duration = 3, Icon = "alert-triangle" }) end)
+            return
+        end
+
+        local WebhookURL = "https://discord.com/api/webhooks/" .. webhookState.webhookPath
+        local data = {
+            ["username"] = "HELLZONEv1 Fisher - Notification System",
+            ["embeds"] = {{
+                ["title"] = "🧪 Test Webhook",
+                ["description"] = "This is a test message from HELLZONEv1 script!",
+                ["color"] = tonumber("0x00ff00"),
+                ["footer"] = { ["text"] = "HELLZONEv1 Webhook Test | " .. os.date("%H:%M:%S") }
+            }}
+        }
+
+        local requestFunc = syn and syn.request or http and http.request or http_request or request or fluxus and fluxus.request
+        if requestFunc then
+            pcall(function()
+                requestFunc({ Url = WebhookURL, Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = HttpService:JSONEncode(data) })
+                pcall(function() UI:Notify({ Title = "Test Sent", Content = "Test webhook sent successfully!", Duration = 3, Icon = "circle-check" }) end)
+            end)
+        else
+            pcall(function() UI:Notify({ Title = "Test Failed", Content = "No HTTP request function available", Duration = 3, Icon = "alert-triangle" }) end)
+        end
+    end
+})
+
+-----------------------------------------------------
+-- 🔹 Fish notification monitoring (improved)
+-----------------------------------------------------
 local lastCatchData = {}
 local obtainedNewFishNotification = getNetFolder() and getNetFolder():FindFirstChild("RE/ObtainedNewFishNotification")
+
+-- Normalize rarity
+local function normalizeRarity(r)
+    return r and r:gsub("%s+", ""):lower() or ""
+end
+
+-- RemoteEvent trigger
 if obtainedNewFishNotification then
-obtainedNewFishNotification.OnClientEvent:Connect(function(itemId, _, data)
-if data and data.InventoryItem and data.InventoryItem.Metadata then
-lastCatchData.ItemId = itemId
-lastCatchData.VariantId = data.InventoryItem.Metadata.VariantId
-end
-end)
+    obtainedNewFishNotification.OnClientEvent:Connect(function(itemId, _, data)
+        if webhookState.enabled and data and data.InventoryItem then
+            local fishName = data.InventoryItem.Name or "Unknown Fish"
+            local rarity = data.InventoryItem.Rarity or "Unknown"
+            local assetId = data.InventoryItem.Metadata and data.InventoryItem.Metadata.AssetId
+            if assetId then
+                for _, cat in ipairs(webhookState.selectedCategories) do
+                    if normalizeRarity(cat) == normalizeRarity(rarity) then
+                        sendFishWebhook(fishName, rarity, assetId, itemId, data.InventoryItem.Metadata.VariantId)
+                        break
+                    end
+                end
+            end
+        end
+    end)
 end
 
--- Monitor fish notifications
+-- GUI trigger (fallback)
 pcall(function()
-local guiNotif = player.PlayerGui:WaitForChild("Small Notification"):WaitForChild("Display"):WaitForChild("Container")
-local fishText = guiNotif:WaitForChild("ItemName")
-local rarityText = guiNotif:WaitForChild("Rarity")
-local imageFrame = player.PlayerGui["Small Notification"]:WaitForChild("Display"):WaitForChild("VectorFrame"):WaitForChild("Vector")
+    local guiNotif = player.PlayerGui:FindFirstChild("Small Notification") or player.PlayerGui:FindFirstChild("SmallNotification")
+    if guiNotif then
+        local display = guiNotif:WaitForChild("Display")
+        local fishText = display:WaitForChild("Container"):WaitForChild("ItemName")
+        local rarityText = display:WaitForChild("Rarity")
+        local imageFrame = display:WaitForChild("VectorFrame"):WaitForChild("Vector")
 
-fishText:GetPropertyChangedSignal("Text"):Connect(function()
-task.wait(0.1) -- wait for rarity to update
-local fishName, rarity = fishText.Text, rarityText.Text
-if fishName and rarity and webhookState.enabled and table.find(webhookState.selectedCategories, rarity) then
-local assetId = string.match(imageFrame.Image, "%d+")
-if assetId then
-sendFishWebhook(fishName, rarity, assetId, lastCatchData.ItemId, lastCatchData.VariantId)
-end
-end
+        fishText:GetPropertyChangedSignal("Text"):Connect(function()
+            task.wait(0.1)
+            local fishName, rarity = fishText.Text, rarityText.Text
+            if webhookState.enabled then
+                for _, cat in ipairs(webhookState.selectedCategories) do
+                    if normalizeRarity(cat) == normalizeRarity(rarity) then
+                        local assetId = string.match(imageFrame.Image, "%d+")
+                        if assetId then
+                            sendFishWebhook(fishName, rarity, assetId, lastCatchData.ItemId, lastCatchData.VariantId)
+                        end
+                        break
+                    end
+                end
+            end
+        end)
+    end
 end)
-end) 
-end
 
 -- Create window with error handling
 local ok, err = pcall(buildWindow)
