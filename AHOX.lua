@@ -1266,33 +1266,79 @@ settings().Rendering.QualityLevel = Enum.QualityLevel.Automatic
 Lighting.GlobalShadows = true
 end
 end
--- 🔹 Anti AFK Module
--- 🔹 Tambahkan di bagian UI Misc Tab
-local AntiAFKToggle = Instance.new("TextButton")
-AntiAFKToggle.Parent = MiscTab -- ganti parent ke Misc
-AntiAFKToggle.Size = UDim2.new(0, 200, 0, 40)
-AntiAFKToggle.Position = UDim2.new(0, 10, 0, 50) -- atur sesuai layout
-AntiAFKToggle.BackgroundColor3 = Color3.fromRGB(170, 0, 0) -- default OFF (merah)
-AntiAFKToggle.TextColor3 = Color3.fromRGB(255, 255, 255)
-AntiAFKToggle.Text = "🔹 Anti AFK: OFF"
-AntiAFKToggle.Font = Enum.Font.SourceSansBold
-AntiAFKToggle.TextSize = 20
 
-local AntiAFKEnabled = false
-AntiAFKToggle.MouseButton1Click:Connect(function()
-    AntiAFKEnabled = not AntiAFKEnabled
-    if AntiAFKEnabled then
-        AntiAFK:Start()
-        AntiAFKToggle.Text = "🔹 Anti AFK: ON"
-        AntiAFKToggle.BackgroundColor3 = Color3.fromRGB(0, 170, 0) -- hijau saat aktif
-    else
-        AntiAFK:Stop()
-        AntiAFKToggle.Text = "🔹 Anti AFK: OFF"
-        AntiAFKToggle.BackgroundColor3 = Color3.fromRGB(170, 0, 0) -- merah saat nonaktif
-    end
-end)
 -- Rejoin server
-SettingsMisc:Button({ Title = "Rejoin Server", Callback = function()
+SettingsMisc:Button({ Title = "R-- 🔹 Anti AFK Module (Final Version)
+-----------------------------------------------------
+local AntiAFK = {}
+AntiAFK.Enabled = false
+AntiAFK.Interval = 60 -- detik
+AntiAFK._connection = nil
+
+-- VirtualUser untuk aksi anti AFK
+local vu = game:GetService("VirtualUser")
+
+-- Fungsi utama untuk mencegah AFK
+local function doAction()
+    pcall(function()
+        vu:Button2Down(Vector2.new(0,0), workspace.CurrentCamera.CFrame)
+        task.wait(0.1)
+        vu:Button2Up(Vector2.new(0,0), workspace.CurrentCamera.CFrame)
+    end)
+end
+
+-- Mulai Anti AFK
+function AntiAFK:Start()
+    if self.Enabled then return end
+    self.Enabled = true
+    self._connection = game:GetService("Players").LocalPlayer.Idled:Connect(function()
+        doAction()
+    end)
+
+    -- Backup loop kalau event Idled gagal
+    task.spawn(function()
+        while self.Enabled do
+            doAction()
+            task.wait(self.Interval)
+        end
+    end)
+end
+
+-- Hentikan Anti AFK
+function AntiAFK:Stop()
+    if not self.Enabled then return end
+    self.Enabled = false
+    if self._connection then
+        self._connection:Disconnect()
+        self._connection = nil
+    end
+end
+
+-----------------------------------------------------
+-- 🔹 Tambahkan tombol Anti AFK ke menu Misc
+-----------------------------------------------------
+SettingsMisc:Toggle({
+    Title = "Anti AFK",
+    Callback = function(v)
+        if v then
+            AntiAFK:Start()
+            UI:Notify({
+                Title = "Anti AFK",
+                Content = "Enabled",
+                Duration = 2,
+                Icon = "circle-check"
+            })
+        else
+            AntiAFK:Stop()
+            UI:Notify({
+                Title = "Anti AFK",
+                Content = "Disabled",
+                Duration = 2,
+                Icon = "x-circle"
+            })
+        end
+    end
+                                }ejoin Server", Callback = function()
 TeleportService:Teleport(game.PlaceId, player)
 end })
 -- Server Hop (cari server publik dengan slot kosong)
