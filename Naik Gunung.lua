@@ -1,9 +1,24 @@
-------------------------------------------
------ =======[ Load WindUI ]
 -------------------------------------------
+----- =======[ LOAD WINDUI ]
+-------------------------------------------
+local Wind
+local function ensureWindUI()
+if Wind then return Wind end
 
-local Version = "1.6.4"
-local WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/download/" .. Version .. "/main.lua"))()
+local Version = "1.6.45"
+local ok, ui = pcall(function()
+return loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/download/" .. Version .. "/main.lua"))()
+end)
+if not ok or not ui then
+ok, ui = pcall(function()
+return loadstring(game:HttpGet("https://raw.githubusercontent.com/Footagesus/WindUI/main/main.lua"))()
+end)
+end
+if ok and ui then 
+Wind = ui
+end
+return Wind
+end
 
 -------------------------------------------
 ----- =======[ GLOBAL FUNCTION ]
@@ -2963,3 +2978,4 @@ SettingsTab:Button({
         NotifySuccess("Config Loaded", "Config has beed loaded!")
     end
 })
+
